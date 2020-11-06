@@ -108,6 +108,9 @@
 * MSAEz 로 모델링한 이벤트스토밍 결과:  http://www.msaez.io/#/storming/ZTi9sAEiJxRHIn5xXAA2Lkn9KNV2/mine/de3fac4ae58d3699a80eb8ac15eabe8c/-MLCf4nI9XHFhdCI2DhE
 
 ![image](https://user-images.githubusercontent.com/70673848/98124211-3a125480-1ef6-11eb-8c3a-e73d38cbad33.png)
+변경 후
+![모델링 변경](https://user-images.githubusercontent.com/70673876/98310244-cbc1b500-200f-11eb-8076-5bb7806f1b1f.PNG)
+
 
  도메인 서열 분리 
    
@@ -122,8 +125,7 @@
 
 ## 헥사고날 아키텍처 다이어그램 도출
 
-
-![image](https://user-images.githubusercontent.com/70673848/98185027-1fb89500-1f4f-11eb-82c8-c194f6aa7ded.png)
+![핵사고날 아키텍처 다이어그램](https://user-images.githubusercontent.com/70673876/98310483-67ebbc00-2010-11eb-8bce-2e4eb5c66c15.PNG)
 
     - Chris Richardson, MSA Patterns 참고하여 Inbound adaptor와 Outbound adaptor를 구분함
     - 호출관계에서 PubSub 과 Req/Resp 를 구분함
@@ -142,6 +144,9 @@ cd payment
 mvn spring-boot:run
 
 cd delivery
+mvn spring-boot:run
+
+cd grade
 mvn spring-boot:run
 
 cd statusview
@@ -164,43 +169,27 @@ import org.springframework.beans.BeanUtils;
 import java.util.List;
 
 @Entity
-@Table(name="Order_table")
-public class Order {
+@Table(name="Grade_table")
+public class Grade {
 
     @Id
     @GeneratedValue(strategy=GenerationType.AUTO)
     private Long id;
-    private Long pizzaId;
-    // LDH 소스추가 초기값 설정
-    private String orderStatus ="Ordered";
-    private Long qty;
-
-    @PostPersist
-    public void onPostPersist(){
-        Ordered ordered = new Ordered();
-        BeanUtils.copyProperties(this, ordered);
-        ordered.publishAfterCommit();
-
-        //Following code causes dependency to external APIs
-        // it is NOT A GOOD PRACTICE. instead, Event-Policy mapping is recommended.
-
-        pizza.external.Payment payment = new pizza.external.Payment();
-        
-        payment.setOrderId(this.getId());
-        payment.setPaymentStatus("Paid");
-
-        // mappings goes here
-        OrderApplication.applicationContext.getBean(pizza.external.PaymentService.class)
-            .doPayment(payment);
+    private Long orderId;
+    private Long score;
+    private String gradeStatus;
 
 
-    }
+    @PrePersist
+    public void onPrePersist(){
+        GradeCanceled gradeCanceled = new GradeCanceled();
+        BeanUtils.copyProperties(this, gradeCanceled);
+        gradeCanceled.publishAfterCommit();
 
-    @PostUpdate
-    public void onPostUpdate(){
-        OrderCanceled orderCanceled = new OrderCanceled();
-        BeanUtils.copyProperties(this, orderCanceled);
-        orderCanceled.publishAfterCommit();
+
+        Graded graded = new Graded();
+        BeanUtils.copyProperties(this, graded);
+        graded.publishAfterCommit();
 
 
     }
@@ -213,30 +202,30 @@ public class Order {
     public void setId(Long id) {
         this.id = id;
     }
-    public Long getPizzaId() {
-        return pizzaId;
+    public Long getOrderId() {
+        return orderId;
     }
 
-    public void setPizzaId(Long pizzaId) {
-        this.pizzaId = pizzaId;
+    public void setOrderId(Long orderId) {
+        this.orderId = orderId;
     }
-    public String getOrderStatus() {
-        return orderStatus;
-    }
-
-    public void setOrderStatus(String orderStatus) {
-        this.orderStatus = orderStatus;
-    }
-    public Long getQty() {
-        return qty;
+    public Long getScore() {
+        return score;
     }
 
-    public void setQty(Long qty) {
-        this.qty = qty;
+    public void setScore(Long score) {
+        this.score = score;
+    }
+    public String getGradeStatus() {
+        return gradeStatus;
     }
 
-
+    public void setGradeStatus(String gradeStatus) {
+        this.gradeStatus = gradeStatus;
+    }
 }
+
+
 
 ```
 - Entity Pattern 과 Repository Pattern 을 적용하여 JPA 를 통하여 다양한 데이터소스 유형 (RDB or NoSQL) 에 대한 별도의 처리가 없도록 데이터 접근 어댑터를 자동 생성하기 위하여 Spring Data REST 의 RestRepository 를 적용하였다
@@ -252,14 +241,14 @@ public interface PurchaseRepository extends PagingAndSortingRepository<Purchase,
 - 적용 후 REST API 의 테스트
 ```
 # 주문처리
-http http://order:8080/order qty=10 pizzaId=10
+http http://order:8080/order qty=1 pizzaId=1
 ```
 
 ![image](https://user-images.githubusercontent.com/70673848/98125248-975ad580-1ef7-11eb-9aa2-8c1f95dc9d6f.png)
 
 ```
 # 주문 상태 확인
-http localhost:8081/orders/1
+http http://order:8080/orders 
 ```
 ![image](https://user-images.githubusercontent.com/70673848/98125455-da1cad80-1ef7-11eb-8c74-bec335853edc.png)
 
@@ -276,20 +265,21 @@ H2가 아닌 Derby in-memory DB를 사용함
 </dependency>
 ```
 
-![image](https://user-images.githubusercontent.com/70673848/98189149-b38e5f00-1f57-11eb-9017-15370565c091.png)
+![폴리그랏](https://user-images.githubusercontent.com/70673876/98325627-97132500-2032-11eb-8cd5-b9771c7f60e9.PNG)
+
 
 
 
 ## 동기식 호출 과 Fallback 처리
 
-분석단계에서의 조건 중 하나로 주문(order)->결제(payment) 간의 호출은 동기식 일관성을 유지하는 트랜잭션으로 처리하기로 하였다. 호출 프로토콜은 이미 앞서 Rest Repository 에 의해 노출되어있는 REST 서비스를 FeignClient 를 이용하여 호출하도록 한다. 
+새로추가한 조건으로 배달(delivery)-> 평가(grade) 간의 호출은 동기식 일관성을 유지하는 트랜잭션으로 처리하기로 하였다. 호출 프로토콜은 이미 앞서 Rest Repository 에 의해 노출되어있는 REST 서비스를 FeignClient 를 이용하여 호출하도록 한다. 
 
 - 결제서비스를 호출하기 위하여 Stub과 (FeignClient) 를 이용하여 Service 대행 인터페이스 (Proxy) 를 구현 
 
 ```
 # (payment) PaymentService.java
 
-package takbaeyo.external;
+package pizza.external;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -298,52 +288,65 @@ import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.util.Date;
 
-@FeignClient(name="payment", url="http://localhost:8082")
-public interface PaymentService {
+@FeignClient(name="grade", url="http://grade:8080")
+//@FeignClient(name="grade", url="http://localhost:8086")
+public interface GradeService {
 
-    @RequestMapping(method= RequestMethod.POST, path="/payments")
-    public void dopay(@RequestBody Payment payment);
+    @RequestMapping(method= RequestMethod.POST, path="/grades")
+    public void doGrade(@RequestBody Grade grade);
 
 }
 ```
 
-- 주문을 받은 직후(@PostPersist) 결제를 요청하도록 처리
+- 배달을 한 직후 (@PostPersist) 평가를 요청하도록 처리
 ```
-# order.java (Entity)
-   @PostPersist
+    @PostPersist
     public void onPostPersist(){
-        Ordered ordered = new Ordered();
-        BeanUtils.copyProperties(this, ordered);
-        ordered.publishAfterCommit();
+        Delivered delivered = new Delivered();
+        BeanUtils.copyProperties(this, delivered);
+        delivered.publishAfterCommit();
 
-        pizza.external.Payment payment = new pizza.external.Payment();
+        DeliveryCanceled deliveryCanceled = new DeliveryCanceled();
+        BeanUtils.copyProperties(this, deliveryCanceled);
+        deliveryCanceled.publishAfterCommit();
 
-        payment.setOrderId(this.getId());
-        payment.setPaymentStatus("Paid");
+        //Following code causes dependency to external APIs
+        // it is NOT A GOOD PRACTICE. instead, Event-Policy mapping is recommended.
 
-        OrderApplication.applicationContext.getBean(pizza.external.PaymentService.class)
-        .doPayment(payment);
+        if("Delivered".equals(delivered.getDeliveryStatus())){
+            pizza.external.Grade grade = new pizza.external.Grade();
+            // mappings goes here
+            grade.setOrderId(delivered.getOrderId());
+            grade.setGradeStatus("Graded");
+            int iscore = (int)(Math.random()*10);
+            grade.setScore(Long.valueOf(iscore));
+
+            DeliveryApplication.applicationContext.getBean(pizza.external.GradeService.class)
+                    .doGrade(grade);
+        }
+
+    }
 ```
 
-- 동기식 호출에서는 호출 시간에 따른 타임 커플링이 발생하며, 결제 시스템이 장애가 나면 주문도 못받는다는 것을 확인:
+- 동기식 호출에서는 호출 시간에 따른 타임 커플링이 발생하며, 배달 시스템이 장애가 나면 평가도 못받는다는 것을 확인:
 
 
 ```
-# 결제 (payment) 서비스를 잠시 내려놓음 (ctrl+c)
+# 평가 (grade) 서비스를 잠시 내려놓음 (ctrl+c)
 
-#주문처리
-http localhost:8081/orders pizzaId=1 qty=1   #Fail
+#배달처리
+>http http://localhost:8088/deliveries orderId=10 deliveryStatus="Delivered"   #Fail
 ```
-![image](https://user-images.githubusercontent.com/70673848/98130658-d9871580-1efd-11eb-9447-0175789ca9f1.png)
+![grade끊음](https://user-images.githubusercontent.com/70673876/98326868-97f98600-2035-11eb-9d02-681c867a4dcf.PNG)
 ```
-#결제서비스 재기동
-cd payment
+#평가서비스 재기동
+cd grade
 mvn spring-boot:run
 
-#주문처리
-http localhost:8081/orders pizzaId=1 qty=1   #Success
+#배달처리
+>http http://localhost:8088/deliveries orderId=10 deliveryStatus="Delivered"   #Success
 ```
-![image](https://user-images.githubusercontent.com/70673848/98130748-ef94d600-1efd-11eb-83f6-6acad31ce584.png)
+![grade 살림](https://user-images.githubusercontent.com/70673876/98326932-be1f2600-2035-11eb-9c8d-73f75eb5b989.PNG)
 
 - 또한 과도한 요청시에 서비스 장애가 도미노 처럼 벌어질 수 있다. (서킷브레이커, 폴백 처리는 운영단계에서 설명한다.)
 
@@ -352,9 +355,9 @@ http localhost:8081/orders pizzaId=1 qty=1   #Success
 
 ## 비동기식 호출 / 시간적 디커플링 / 장애격리 / 최종 (Eventual) 일관성 테스트
 
-배달이 이루어진 후에 쿠폰시스템으로 이를 알려주는 행위는 동기식이 아니라 비 동기식으로 처리하여 쿠폰 시스템의 처리를 위하여 주문이 블로킹 되지 않아도록 처리한다.
+배달이 취소된 후에 평가시스템으로 이를 알려주는 행위는 동기식이 아니라 비 동기식으로 처리하여 평가 시스템의 처리를 위하여 주문 블로킹 되지 않아도록 처리한다.
  
-- 이를 위하여 배달이력에 기록을 남긴 후에 곧바로 쿠폰이 발행 되었다는 도메인 이벤트를 카프카로 송출한다(Publish)
+- 이를 위하여 배달취소이력에 기록을 남긴 후에 곧바로 평가가 취소 되었다는 도메인 이벤트를 카프카로 송출한다(Publish)
  
 ```
 package pizza;
@@ -375,9 +378,9 @@ public class Delivery {
 
     @PostPersist
     public void onPostPersist(){
-        Delivered delivered = new Delivered();
-        BeanUtils.copyProperties(this, delivered);
-        delivered.publishAfterCommit();
+        DeliveryCanceled deliveryCanceled = new DeliveryCanceled();
+        BeanUtils.copyProperties(this, deliveryCanceled);
+        deliveryCanceled.publishAfterCommit();
 
 
     }
@@ -385,112 +388,71 @@ public class Delivery {
 - 배달완료 이벤트에 대해서 이를 수신하여 자신의 정책을 처리하도록 PolicyHandler 를 구현한다:
 
 ```
-package pizza;
-
-import pizza.config.kafka.KafkaProcessor;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cloud.stream.annotation.StreamListener;
-import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.stereotype.Service;
-
-@Service
-public class PolicyHandler{
-
-    @Autowired
-    CouponRepository CouponRepository;
-
     @StreamListener(KafkaProcessor.INPUT)
-    public void onStringEventListener(@Payload String eventString){
+    public void wheneverDeliveryCanceled_CancelGrade(@Payload DeliveryCanceled deliveryCanceled){
 
-    }
+        if(deliveryCanceled.isMe()){
 
-    @StreamListener(KafkaProcessor.INPUT)
-    public void wheneverDelivered_PublishCoupon(@Payload Delivered delivered){
+            if("Canceled".equals(deliveryCanceled.getDeliveryStatus())){
+                Grade grade = new Grade();
+                grade.setOrderId(deliveryCanceled.getOrderId());
+                grade.setGradeStatus(deliveryCanceled.getDeliveryStatus());
 
-        if(delivered.isMe()){
+                GradeRepository.save(grade);
+            }
 
-            Coupon coupon = new Coupon();
-            CouponRepository.save(coupon);
-
-            System.out.println("##### listener PublishCoupon : " + delivered.toJson());
+            System.out.println("##### listener CancelGrade : " + deliveryCanceled.toJson());
         }
     }
 
-}
-
 
 ```
 
-쿠폰 시스템은 배송서비스와 완전히 분리되어있으며, 이벤트 수신에 따라 처리되기 때문에, 쿠폰 시스템이 유지보수로 인해 잠시 내려간 상태라도 주문을 받는데 문제가 없다:
+평가 시스템은 배송취소서비스와 완전히 분리되어있으며, 이벤트 수신에 따라 처리되기 때문에, 쿠폰 시스템이 유지보수로 인해 잠시 내려간 상태라도 배송취소를 받는데 문제가 없다:
 
-
-
-![image](https://user-images.githubusercontent.com/70673848/98187965-7b861c80-1f55-11eb-8ce1-4ec6798e50df.png)
-![image](https://user-images.githubusercontent.com/70673848/98187975-7de87680-1f55-11eb-8a1f-35e74d86a864.png)
 ```
 쿠폰 서비스를 잠시 내려놓음 
 ```
-![image](https://user-images.githubusercontent.com/70673848/98187982-817bfd80-1f55-11eb-946c-3fea9417de92.png)
-![image](https://user-images.githubusercontent.com/70673848/98187989-83de5780-1f55-11eb-9b3a-1e678cf63948.png)
-![image](https://user-images.githubusercontent.com/70673848/98187993-86d94800-1f55-11eb-8976-d6aabbe0d48e.png)
+![배송캔슬2](https://user-images.githubusercontent.com/70673876/98327864-e019a800-2037-11eb-82d5-060caa05a6a8.PNG)
 
 ```
 쿠폰 서비스 재기동
-cd coupon
+cd grade
 mvn spring-boot:run
 
-모든 주문의 상태가 "배송됨"으로 확인
-```
-![image](https://user-images.githubusercontent.com/70673848/98188001-89d43880-1f55-11eb-95a9-00a556648bb1.png)
+![배송캔슬1](https://user-images.githubusercontent.com/70673876/98327826-d1cb8c00-2037-11eb-8822-ddac921b0818.PNG)
 
+모든 주문의 상태가 "배송됨"으로 확인
 
 ## CQRS 적용
 
-order의 처리 결과
-
-![image](https://user-images.githubusercontent.com/70673848/98133383-df322a80-1f00-11eb-84ec-86c79e322f64.png)
-
-delivery의 처리 결과 
-
-![image](https://user-images.githubusercontent.com/70673848/98133397-e3f6de80-1f00-11eb-9576-5b3ac711f0c4.png)
-
-주문현황을 VIEW로 구현
-
-![image](https://user-images.githubusercontent.com/70673848/98133365-d8a3b300-1f00-11eb-9d98-65cb337cc926.png)
-
+주문을 하면 새로 추가된 grade의 gradeStatus 와 score 값을 주문현황을 statusview 에서 확인 가능하다
+![CQRS](https://user-images.githubusercontent.com/70673876/98328146-659d5800-2038-11eb-9207-ca78b9588ef5.PNG)
 
 ## gateway 적용
 
 application.yaml파일에 소스 적용
+![gateway1](https://user-images.githubusercontent.com/70673876/98328302-c036b400-2038-11eb-816e-173dca38cb14.PNG)
 
-
-![image](https://user-images.githubusercontent.com/70673848/98185841-ccdfdd00-1f50-11eb-8566-10ac8d20791f.png)
 
 호출확인
-
-![image](https://user-images.githubusercontent.com/70673848/98185850-cfdacd80-1f50-11eb-8bdb-66e0c4e59169.png)
+![gateway2](https://user-images.githubusercontent.com/70673876/98328342-db092880-2038-11eb-91c4-91ba64af3769.PNG)
 
 # 운영
 
 ## CI/CD 설정
 각 구현체들은 각자의 source repository 에 구성되었고, 사용한 CI/CD 플랫폼은 Azure를 사용하였으며, pipeline build script 는 각 프로젝트 폴더 이하에 deployment.yml, service.yml 에 포함되었다.
 
-![image](https://user-images.githubusercontent.com/70673848/98127099-a6428780-1ef9-11eb-9bda-b770e18224ae.png)
+![CI](https://user-images.githubusercontent.com/70673876/98328385-f7a56080-2038-11eb-8844-797f3419f9ed.PNG)
 
-![image](https://user-images.githubusercontent.com/70673848/98127386-ff122000-1ef9-11eb-8cf4-eb0692915a9e.png)
-
-![image](https://user-images.githubusercontent.com/70673848/98127453-1224f000-1efa-11eb-8e85-bbf578a71189.png)
-
-![image](https://user-images.githubusercontent.com/70673848/98127526-2832b080-1efa-11eb-92d5-e5237bb17d83.png)
+![CD](https://user-images.githubusercontent.com/70673876/98328394-fd02ab00-2038-11eb-9776-e639d4501fce.PNG)
 
 
 ## 동기식 호출 / 서킷 브레이킹 / 장애격리
 
 * 서킷 브레이킹 프레임워크의 선택: Spring FeignClient + Hystrix 옵션을 사용하여 구현함
 
-시나리오는 주문(order)-->결제(payment) 의 연결을 RESTful Request/Response 로 연동하여 구현이 되어있고, 결제 요청이 과도할 경우 CB 를 통하여 장애격리.
+시나리오는 배달(delivery)-->평가(grade) 의 연결을 RESTful Request/Response 로 연동하여 구현이 되어있고, 결제 요청이 과도할 경우 CB 를 통하여 장애격리.
 
 - order의 application.yaml 파일에 Hystrix 를 설정: 요청처리 쓰레드에서 처리시간이 500 밀리가 넘어서기 시작하여 어느정도 유지되면 CB 회로가 닫히도록 (요청을 빠르게 실패처리, 차단) 설정
 ```
@@ -505,7 +467,7 @@ hystrix:
       execution.isolation.thread.timeoutInMilliseconds: 500
 
 ```
-- 피호출 서비스 pament onPostPersist영역의 부하코드 추가 - 400 밀리에서 증감 220 밀리 정도 왔다갔다 하게
+- 피호출 서비스 pament onPostPersist영역의 부하코드 추가 - 500 밀리에서 증감 220 밀리 정도 왔다갔다 하게
 ```
 # payment.java (Entity)
 
@@ -523,7 +485,7 @@ hystrix:
     }
 ```
 
-![image](https://user-images.githubusercontent.com/70673848/98189992-6e6b2c80-1f59-11eb-9851-9fa3380fa05d.png)
+
 
 -운영시스템은 죽지 않고 지속적으로 CB 에 의하여 적절히 회로가 열림과 닫힘이 벌어지면서 자원을 보호하고 있음을 보여줌. 
 72% 가 성공하였고, 고객 사용성에 있어 좋지 않기 때문에 28%를 커버하기위하여  Retry 설정과 동적 Scale out (replica의 자동적 추가,HPA) 을 통하여 시스템을 확장 해주는 후속처리가 필요.
@@ -536,27 +498,28 @@ hystrix:
 
 - 결제서비스에 대한 replica 를 동적으로 늘려주도록 HPA 를 설정한다. 설정은 CPU 사용량이 15프로를 넘어서면 replica 를 10개까지 늘려준다:
 ```
-kubectl autoscale deploy pay --min=1 --max=10 --cpu-percent=15
+kubectl autoscale deployment grade --min=1 --max=10 --cpu-percent=15
 ```
-![image](https://user-images.githubusercontent.com/70673848/98128510-5cf33780-1efb-11eb-8f1d-56e3eacb5d6a.png)
+![오토스케일아웃1](https://user-images.githubusercontent.com/70673876/98329119-cded3900-203a-11eb-8bd4-ebe356946ffc.PNG)
 
 - CB 에서 했던 방식대로 워크로드를 2분 동안 걸어준다.
 ```
-siege -c100 -t120S -r10 --content-type "application/json" 'http://localhost:8081/orders POST {"pizzaId":1,"qty":2}
+siege -c100 -t120S -r10 --content-type "application/json" 'http://localhost:8081/orders POST {"orderId":1,"score":2}
 
 ```
 - 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다:
 ```
-kubectl get deploy payment -w
+kubectl get deployment grade -w
 ```
 - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다:
-![image](https://user-images.githubusercontent.com/70673848/98128628-77c5ac00-1efb-11eb-9b45-8dbdbf340980.png)
+
+![오토스케일3](https://user-images.githubusercontent.com/70673876/98329126-d776a100-203a-11eb-9045-d4a64d0f973a.PNG)
 
 ```
 - siege 의 로그를 보아도 전체적인 성공률이 높아진 것을 확인 할 수 있다. 
 
 ```
-![image](https://user-images.githubusercontent.com/70673848/98187606-ad4ab380-1f54-11eb-8bb6-8d791f5f3090.png)
+![오토스케일4](https://user-images.githubusercontent.com/70673876/98329130-da719180-203a-11eb-905a-872ab784ddac.PNG)
 
 
 
@@ -576,9 +539,7 @@ kubectl set image ...
 ```
 
 - seige 의 화면으로 넘어가서 Availability 가 100% 미만으로 떨어졌는지 확인
-
-![image](https://user-images.githubusercontent.com/70673848/98135259-f6721780-1f02-11eb-99b9-e8bac256177d.png)
-
+![무정지제배포1](https://user-images.githubusercontent.com/70673876/98329276-363c1a80-203b-11eb-85f4-ddc2f265b827.PNG)
 
 
 배포기간중 Availability 가 평소 100%에서 90% 대로 떨어지는 것을 확인. 원인은 쿠버네티스가 성급하게 새로 올려진 서비스를 READY 상태로 인식하여 서비스 유입을 진행한 것이기 때문. 이를 막기위해 Readiness Probe 를 설정함:
@@ -590,8 +551,7 @@ kubectl apply -f kubernetes/deployment.yaml
 ```
 
 - 동일한 시나리오로 재배포 한 후 Availability 확인:
-
-![image](https://user-images.githubusercontent.com/70673848/98135292-fffb7f80-1f02-11eb-876e-937a98b39f91.png)
+![무정지제배포2](https://user-images.githubusercontent.com/70673876/98329282-3a683800-203b-11eb-8567-a4cb38b9fadf.PNG)
 
 
 배포기간 동안 Availability 가 변화없기 때문에 무정지 재배포가 성공한 것으로 확인됨.
