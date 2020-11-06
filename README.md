@@ -246,14 +246,13 @@ public interface PurchaseRepository extends PagingAndSortingRepository<Purchase,
 # 주문처리
 http http://order:8080/order qty=1 pizzaId=1
 ```
-
-![image](https://user-images.githubusercontent.com/70673848/98125248-975ad580-1ef7-11eb-9aa2-8c1f95dc9d6f.png)
+![rest1](https://user-images.githubusercontent.com/70673876/98332494-22e07d80-2042-11eb-91df-60c9ed24549e.PNG)
 
 ```
 # 주문 상태 확인
 http http://order:8080/orders 
 ```
-![image](https://user-images.githubusercontent.com/70673848/98125455-da1cad80-1ef7-11eb-8c74-bec335853edc.png)
+![rest2](https://user-images.githubusercontent.com/70673876/98332502-25db6e00-2042-11eb-9e13-43909a32e483.PNG)
 
 ## 폴리글랏 퍼시스턴스
 
