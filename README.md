@@ -488,10 +488,10 @@ hystrix:
     }
 ```
 
+![서브](https://user-images.githubusercontent.com/70673876/98331927-f6783180-2040-11eb-9561-0d31e1d4b27b.png)
 
 
 -운영시스템은 죽지 않고 지속적으로 CB 에 의하여 적절히 회로가 열림과 닫힘이 벌어지면서 자원을 보호하고 있음을 보여줌. 
-72% 가 성공하였고, 고객 사용성에 있어 좋지 않기 때문에 28%를 커버하기위하여  Retry 설정과 동적 Scale out (replica의 자동적 추가,HPA) 을 통하여 시스템을 확장 해주는 후속처리가 필요.
 
 
 ### 오토스케일 아웃
@@ -564,10 +564,7 @@ kubectl apply -f kubernetes/deployment.yaml
 - grade 의 depolyment.yaml 소스 설정
 http get방식에서 tcp방식으로 변경, 서비스포트 8080이 아닌 고의로 8081로 포트 변경하여 강제로 재기동 되도록 설정 한다.
 
-
-![image](https://user-images.githubusercontent.com/70673848/98129462-7d6fc180-1efc-11eb-9d79-a651ee57d3db.png)
-
-
+![라이브](https://user-images.githubusercontent.com/70673876/98332180-8322ef80-2041-11eb-96e5-34a027ab8d25.png)
 
 
 
